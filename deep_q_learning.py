@@ -1,12 +1,8 @@
 from collections import deque
-import  neural_model
 import ale_manager
 import random
+import deep_q_network
 
-from keras.layers import Dense, Conv2D, Flatten
-from keras.models import Sequential
-from keras.optimizers import RMSprop
-import  numpy as np
 
 class DeepQLearning(object):
     def __init__(self):
@@ -14,22 +10,11 @@ class DeepQLearning(object):
         self.experience_replay_memory = deque([], maxlen=1000000)
         self.env_manager = ale_manager.ALEManager()
         self.possible_actions = self.env_manager.get_legal_actions()
-        self.DQN = neural_model.DQN(output_units=len(self.possible_actions))
+        self.input_shape = (84, 84, 4)
+        self.output_units = len(self.possible_actions)
+        self.DQN = deep_q_network.DQN(input_shape=self.input_shape, output_units=self.output_units)
         self.epsilon = 1.
         self.gamma = 0.9
-
-    def get_q_network(self):
-        model = Sequential()
-        model.add(
-            Conv2D(filters=16, kernel_size=(8, 8), strides=(4, 4), input_shape=self.input_shape, activation='relu'))
-        model.add(Conv2D(filters=32, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
-        model.add(Flatten())
-        model.add(Dense(units=256, activation='relu'))
-        model.add(Dense(units=self.output_units))
-
-        model.compile(loss="mse", optimizer=RMSprop())
-
-        return model
 
     def update_epsilon(self):
         if self.epsilon < 0.1:
@@ -40,15 +25,30 @@ class DeepQLearning(object):
         else:
             self.epsilon -= 9.000000000000001e-07  # epsilon -= (1-0.1) / 1000000
 
-    def e_greedy_select_action(self, input):
+    def e_greedy_select_action(self, preprocessed_input):
         if random.random() <= self.epsilon:
             action = self.env_manager.get_random_action()
         else:
-            action = DQN.get_predicted_action(input)
+            action = self.DQN.get_predicted_action(preprocessed_input)
+
+        self.update_epsilon()
+
+        return action
 
     def deep_q_learning_with_experience_replay(self):
         for num_episode in range(10000):
             preprocessed_input = self.env_manager.initialize_input_sequence()
             while not self.env_manager.is_game_over():
+                action = self.e_greedy_select_action(preprocessed_input)
+                reward, next_preprocessed_input = self.env_manager.execute_action(action)
+                self.experience_replay_memory.append(
+                    (preprocessed_input, action, reward, next_preprocessed_input, self.env_manager.is_game_over()))
+                if len(self.experience_replay_memory) > self.minibatch_size:
+                    sample_minibatch = random.choices(self.experience_replay_memory, k=self.minibatch_size)
+                    _input, _output = self.DQN.prepare_minibatch(sample_minibatch, self.gamma)
+                    self.DQN.perform_gradient_descent_step(_input, _output)
 
 
+
+if __name__ == '__main__':
+    DeepQLearning().deep_q_learning_with_experience_replay()

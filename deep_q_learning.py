@@ -5,16 +5,18 @@ import deep_q_network
 
 
 class DeepQLearning(object):
-    def __init__(self):
+    def __init__(self, env_manager=ale_manager.ALEManager(), input_shape=(84, 84, 4), q_network=deep_q_network.DQN,
+                 num_episode=10000):
         self.minibatch_size = 32
         self.experience_replay_memory = deque([], maxlen=1000000)
-        self.env_manager = ale_manager.ALEManager()
+        self.env_manager = env_manager
         self.possible_actions = self.env_manager.get_legal_actions()
-        self.input_shape = (84, 84, 4)
+        self.input_shape = input_shape
         self.output_units = len(self.possible_actions)
-        self.DQN = deep_q_network.DQN(input_shape=self.input_shape, output_units=self.output_units)
+        self.DQN = q_network(input_shape=self.input_shape, output_units=self.output_units)
         self.epsilon = 1.
         self.gamma = 0.9
+        self.num_episode = num_episode
 
     def update_epsilon(self):
         if self.epsilon < 0.1:
@@ -36,19 +38,21 @@ class DeepQLearning(object):
         return action
 
     def deep_q_learning_with_experience_replay(self):
-        for num_episode in range(10000):
+        for episode in range(self.num_episode):
             preprocessed_input = self.env_manager.initialize_input_sequence()
             while not self.env_manager.is_game_over():
                 action = self.e_greedy_select_action(preprocessed_input)
                 reward, next_preprocessed_input = self.env_manager.execute_action(action)
                 self.experience_replay_memory.append(
                     (preprocessed_input, action, reward, next_preprocessed_input, self.env_manager.is_game_over()))
+                preprocessed_input = next_preprocessed_input
                 if len(self.experience_replay_memory) > self.minibatch_size:
-                    sample_minibatch = random.choices(self.experience_replay_memory, k=self.minibatch_size)
+                    sample_minibatch = random.sample(self.experience_replay_memory, k=self.minibatch_size)
                     _input, _output = self.DQN.prepare_minibatch(sample_minibatch, self.gamma)
                     self.DQN.perform_gradient_descent_step(_input, _output)
 
 
-
 if __name__ == '__main__':
-    DeepQLearning().deep_q_learning_with_experience_replay()
+    dql_agent = DeepQLearning(env_manager=env_manager_cartpole.EnvManager(), input_shape=4,
+                              q_network=deep_q_network_cartpole.DQN_CartPole, num_episode=100)
+    dql_agent.deep_q_learning_with_experience_replay()

@@ -2,3 +2,6 @@
 .ipynb_checkpoints
 *test.ipynb
 *test.py
+.idea
+.tests
+__pycache__

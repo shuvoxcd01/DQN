@@ -7,9 +7,12 @@ import cv2
 
 from ale_python_interface import ALEInterface
 
+from env_manager import EnvManager
 
-class ALEManager(object):
-    def __init__(self, rom_name='Space_Invaders.bin', display_screen=True, frame_skip=3, color_averaging=True):
+
+class ALEManager(EnvManager):
+
+    def __init__(self, rom_name='Space_Invaders.bin', display_screen=False, frame_skip=3, color_averaging=True):
         self.logger = logging.getLogger(__name__)
 
         self.ale = ALEInterface()
@@ -63,3 +66,6 @@ class ALEManager(object):
 
     def is_game_over(self):
         return self.ale.game_over()
+
+    def get_observation_shape(self):
+        return (84, 84, 4)

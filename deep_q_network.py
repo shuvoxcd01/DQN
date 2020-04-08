@@ -1,27 +1,35 @@
-from keras.layers import Dense, Conv2D, Flatten
-from keras.models import Sequential
-from keras.optimizers import RMSprop
+import os
+from abc import abstractmethod
+from datetime import datetime
+
 import numpy as np
+from keras.callbacks import TensorBoard
+
+from keras.models import load_model
 
 
 class DQN(object):
-    def __init__(self, input_shape, output_units):
+    def __init__(self, input_shape, output_units, model_dir='models', model_name='model.h5'):
         self.input_shape = input_shape
         self.output_units = output_units
-        self.model = self.get_q_network()
+        self.model_dir = os.path.join(os.path.dirname(os.path.abspath('__file__')), model_dir)
+        self.model_name = model_name
+        self.model = self._load_model()
 
+    def _load_model(self):
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+
+        model_name = os.path.join(self.model_dir, self.model_name)
+
+        if os.path.exists(model_name):
+            return load_model(model_name)
+
+        return self.get_q_network()
+
+    @abstractmethod
     def get_q_network(self):
-        model = Sequential()
-        model.add(
-            Conv2D(filters=16, kernel_size=(8, 8), strides=(4, 4), input_shape=self.input_shape, activation='relu'))
-        model.add(Conv2D(filters=32, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
-        model.add(Flatten())
-        model.add(Dense(units=256, activation='relu'))
-        model.add(Dense(units=self.output_units))
-
-        model.compile(loss="mse", optimizer=RMSprop())
-
-        return model
+        pass
 
     def get_prediction(self, preprocessed_input):
         return self.model.predict(np.expand_dims(preprocessed_input, 0))[0]
@@ -49,3 +57,7 @@ class DQN(object):
 
     def perform_gradient_descent_step(self, _input, _output):
         self.model.fit(x=_input, y=_output, epochs=1)
+
+    def save_model(self, step=''):
+        model_name = os.path.join(self.model_dir, (str(step) + '--' + self.model_name))
+        self.model.save(model_name)

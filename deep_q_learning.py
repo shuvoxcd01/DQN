@@ -1,4 +1,5 @@
 import random
+import inspect
 from datetime import datetime
 
 import tensorflow as tf
@@ -13,11 +14,12 @@ class DeepQLearningAgent(object):
                  epsilon_decay_rate=9.000000000000001e-07, save_model_step=100):
         self.minibatch_size = 32
         self.experience_replay_memory = deque([], maxlen=1000000)
-        self.env_manager = env_manager()
+        self.env_manager = env_manager() if inspect.isclass(env_manager) else env_manager
         self.possible_actions = self.env_manager.get_legal_actions()
         self.input_shape = self.env_manager.get_observation_shape()
         self.output_units = len(self.possible_actions)
-        self.DQN = q_network(input_shape=self.input_shape, output_units=self.output_units)
+        self.DQN = q_network(input_shape=self.input_shape, output_units=self.output_units) if inspect.isclass(
+            q_network) else q_network
         self.epsilon = 1.
         self.gamma = 0.9
         self.num_episode = num_episode
@@ -77,4 +79,4 @@ class DeepQLearningAgent(object):
                 tf.summary.scalar('epsilon', self.epsilon, step=episode)
 
             if ((episode + 1) % self.save_model_step) == 0:
-                self.DQN.save_model(episode)
+                self.DQN.save_model(episode+1)

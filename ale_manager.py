@@ -5,8 +5,7 @@ import random
 import numpy as np
 import cv2
 
-from ale_python_interface import ALEInterface
-
+from atari_py import ALEInterface, get_game_path, list_games
 from env_manager import EnvManager
 
 
@@ -24,10 +23,15 @@ class ALEManager(EnvManager):
         self.sequence = np.empty(shape=(84, 84, 4), dtype=np.uint8)
 
     def _load_rom(self, rom_name):
+        if rom_name in list_games():
+            self.ale.loadROM(get_game_path(rom_name))
+            return
+
         rom_path = os.path.join(os.path.dirname(os.path.abspath('__file__')), 'ROMs', rom_name)
         if not os.path.exists(rom_path):
             self.logger.error("Invalid ROM path")
             sys.exit(1)
+
         self.ale.loadROM(bytes(rom_path, encoding='utf-8'))
 
     def get_legal_actions(self):

@@ -1,8 +1,6 @@
 absl-py==0.8.1
 ale-python-interface==0.6
 astor==0.8.0
-# Editable install with no version control (atari-py==0.3.0)
--e /media/falguni/Study/Arcade Learning Environment/atari_py/atari-py-master
 attrs==19.3.0
 backcall==0.1.0
 bleach==3.1.0

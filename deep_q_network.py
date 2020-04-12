@@ -1,31 +1,34 @@
 import os
 from abc import abstractmethod
-from datetime import datetime
 
 import numpy as np
-from keras.callbacks import TensorBoard
-
 from keras.models import load_model
 
 
 class DQN(object):
-    def __init__(self, input_shape, output_units, model_dir='models', model_name='model.h5'):
+    def __init__(self, input_shape, output_units, save_model_dir='models', save_model_name='model.h5',
+                 load_model_dir=None, load_model_name=None):
         self.input_shape = input_shape
         self.output_units = output_units
-        self.model_dir = os.path.join(os.path.dirname(os.path.abspath('__file__')), model_dir)
-        self.model_name = model_name
+        self.save_model_dir = save_model_dir
+        self.save_model_name = save_model_name
+        self.load_model_dir = load_model_dir
+        self.load_model_name = load_model_name
         self.model = self._load_model()
 
-    def _load_model(self):
-        if not os.path.exists(self.model_dir):
-            os.makedirs(self.model_dir)
+        if not os.path.exists(self.save_model_dir):
+            os.makedirs(self.save_model_dir)
 
-        model_name = os.path.join(self.model_dir, self.model_name)
+    def _load_model(self):
+        if self.load_model_dir is None and self.load_model_name is None:
+            return self.get_q_network()
+
+        model_name = os.path.join(self.load_model_dir, self.load_model_name)
 
         if os.path.exists(model_name):
             return load_model(model_name)
 
-        return self.get_q_network()
+        raise Exception("Model could not be loaded.")
 
     @abstractmethod
     def get_q_network(self):
@@ -59,5 +62,5 @@ class DQN(object):
         self.model.fit(x=_input, y=_output, epochs=1)
 
     def save_model(self, step=''):
-        model_name = os.path.join(self.model_dir, (str(step) + '--' + self.model_name))
+        model_name = os.path.join(self.save_model_dir, (str(step) + '--' + self.save_model_name))
         self.model.save(model_name)

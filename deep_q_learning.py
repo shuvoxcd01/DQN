@@ -10,8 +10,9 @@ from space_Invaders_q_network import DQNSpaceInvaders
 
 
 class DeepQLearningAgent(object):
-    def __init__(self, env_manager=ALEManager, q_network=DQNSpaceInvaders, num_episode=10000,
-                 epsilon_decay_rate=9.000000000000001e-07, save_model_step=100):
+    def __init__(self, env_manager=ALEManager, q_network=DQNSpaceInvaders, num_total_episode=10000,
+                 episode_starts_from=0, epsilon_decay_rate=9.000000000000001e-07, save_model_step=100, epsilon=1.,
+                 logdir=None):
         self.minibatch_size = 32
         self.experience_replay_memory = deque([], maxlen=1000000)
         self.env_manager = env_manager() if inspect.isclass(env_manager) else env_manager
@@ -20,11 +21,12 @@ class DeepQLearningAgent(object):
         self.output_units = len(self.possible_actions)
         self.DQN = q_network(input_shape=self.input_shape, output_units=self.output_units) if inspect.isclass(
             q_network) else q_network
-        self.epsilon = 1.
+        self.epsilon = float(epsilon)
         self.gamma = 0.9
-        self.num_episode = num_episode
+        self.num_total_episode = num_total_episode
+        self.n_episode = episode_starts_from
         self.epsilon_decay_rate = epsilon_decay_rate
-        logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S") if logdir is None else logdir
         self.file_writer = tf.summary.create_file_writer(logdir=logdir)
         self.save_model_step = save_model_step
 
@@ -49,7 +51,7 @@ class DeepQLearningAgent(object):
 
     def learn_with_experience_replay(self):
         """vanilla deep_q_learning_with_experience_replay"""
-        for episode in range(self.num_episode):
+        while self.n_episode < self.num_total_episode:
             preprocessed_input = self.env_manager.initialize_input_sequence()
             cumulative_reward = 0
             episode_q_value_list = []
@@ -74,9 +76,12 @@ class DeepQLearningAgent(object):
             avg_q_value_per_action = sum(episode_q_value_list) / float(len(episode_q_value_list))
 
             with self.file_writer.as_default():
-                tf.summary.scalar('Return per episode', cumulative_reward, step=episode)
-                tf.summary.scalar('Average q_value', avg_q_value_per_action, step=episode)
-                tf.summary.scalar('epsilon', self.epsilon, step=episode)
+                tf.summary.scalar('Return per episode', cumulative_reward, step=self.n_episode)
+                tf.summary.scalar('Average q_value', avg_q_value_per_action, step=self.n_episode)
+                tf.summary.scalar('epsilon', self.epsilon, step=self.n_episode)
+                tf.summary.flush()
 
-            if ((episode + 1) % self.save_model_step) == 0:
-                self.DQN.save_model(episode+1)
+            if ((self.n_episode + 1) % self.save_model_step) == 0:
+                self.DQN.save_model('-episode:' + str(self.n_episode + 1) + '-epsilon:' + str(self.epsilon))
+
+            self.n_episode += 1

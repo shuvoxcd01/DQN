@@ -35,7 +35,7 @@ class ALEManager(EnvManager):
         self.ale.loadROM(bytes(rom_path, encoding='utf-8'))
 
     def get_legal_actions(self):
-        return self.ale.getLegalActionSet()
+        return self.ale.getMinimalActionSet()
 
     def get_random_action(self):
         return random.choice(self.get_legal_actions())

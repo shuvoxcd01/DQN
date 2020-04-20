@@ -20,12 +20,14 @@ class DQN(object):
             os.makedirs(self.save_model_dir)
 
     def _load_model(self):
-        if self.load_model_dir is None and self.load_model_name is None:
+        if self.load_model_dir is None or self.load_model_name is None:
+            print("Creating new neural-network")
             return self.get_q_network()
 
         model_name = os.path.join(self.load_model_dir, self.load_model_name)
 
         if os.path.exists(model_name):
+            print("Loading existing model, " + str(model_name))
             return load_model(model_name)
 
         raise Exception("Model could not be loaded.")

@@ -19,7 +19,7 @@ class ALEManager(EnvManager):
         self.ale.setInt(b'frame_skip', frame_skip)
         self.ale.setBool(b'color_averaging', color_averaging)
         self._load_rom(rom_name)
-
+        self.actions = self.ale.getMinimalActionSet()
         self.sequence = np.empty(shape=(84, 84, 4), dtype=np.uint8)
 
     def _load_rom(self, rom_name):
@@ -34,8 +34,11 @@ class ALEManager(EnvManager):
 
         self.ale.loadROM(bytes(rom_path, encoding='utf-8'))
 
+    def _map_action(self, action):
+        return self.actions[action]
+
     def get_legal_actions(self):
-        return self.ale.getMinimalActionSet()
+        return np.arange(len(self.actions), dtype=np.int32)
 
     def get_random_action(self):
         return random.choice(self.get_legal_actions())
@@ -44,7 +47,7 @@ class ALEManager(EnvManager):
         self.ale.reset_game()
         screen = np.empty((210, 160), dtype=np.uint8)
         for i in range(4):
-            self.ale.act(self.get_random_action())
+            self.ale.act(self._map_action(self.get_random_action()))
             self.ale.getScreenGrayscale(screen)
             preprocessed_screen = self.preprocess_screen(screen)
             self.sequence[:, :, i] = preprocessed_screen
@@ -60,7 +63,7 @@ class ALEManager(EnvManager):
         """Executes the action given as parameter and returns a
         reward and a sequence of length 4 containing preprocessed screens."""
         screen = np.empty((210, 160), dtype=np.uint8)
-        reward = self.ale.act(action)
+        reward = self.ale.act(self._map_action(action))
         self.ale.getScreenGrayscale(screen)
         preprocessed_screen = self.preprocess_screen(screen)
         self.sequence[:, :, :3] = self.sequence[:, :, 1:]

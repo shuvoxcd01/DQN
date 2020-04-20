@@ -6,3 +6,6 @@
 .tests
 __pycache__
 =1.24.3
+logs
+models
+.old_logs_and_models

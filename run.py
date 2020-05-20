@@ -1,6 +1,6 @@
 from cartpole_env_manager import CartPoleEnvManager
 from cartpole_q_network import DQNCartPole
-from deep_q_learning import DeepQLearningAgent
+from deep_q_learner import DeepQLearningAgent
 
 if __name__ == '__main__':
     env_manager = CartPoleEnvManager()

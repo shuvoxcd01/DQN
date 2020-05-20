@@ -1,78 +1,64 @@
-import os
 import logging
-import sys
-import random
 import numpy as np
-import cv2
 
-from atari_py import ALEInterface, get_game_path, list_games
+import gym
+from gym.wrappers import AtariPreprocessing, FrameStack
+
 from env_manager import EnvManager
 
 
+class ALEManagerArgs(object):
+    def __init__(self):
+        self.ROM_NAME = 'PongNoFrameskip-v4'
+        self.SHOW_SCREEN = False
+        self.SCREEN_SIZE = 84
+        self.FRAME_SKIP = 4  # ACTION_REPEAT
+        self.COLOR_AVERAGING = True
+        self.NO_OP_MAX = 30
+        self.AGENT_HISTORY_LENGTH = 4
+        self.TERMINAL_ON_LIFE_LOSS = True
+        self.GRAYSCALE_OBS = True
+        self.SCALE_OBS = False
+
+
 class ALEManager(EnvManager):
-
-    def __init__(self, rom_name='Space_Invaders.bin', display_screen=False, frame_skip=3, color_averaging=True):
+    def __init__(self, args):
         self.logger = logging.getLogger(__name__)
+        self.ROM_NAME = args.ROM_NAME
+        self.SHOW_SCREEN = args.SHOW_SCREEN
+        self.SCREEN_SIZE = args.SCREEN_SIZE
+        self.FRAME_SKIP = args.FRAME_SKIP
+        self.COLOR_AVERAGING = args.COLOR_AVERAGING
+        self.NO_OP_MAX = args.NO_OP_MAX
+        self.AGENT_HISTORY_LENGTH = args.AGENT_HISTORY
+        self.TERMINAL_ON_LIFE_LOSS = args.TERMINAL_ON_LIFE_LOSS
+        self.GRAYSCALE_OBS = args.GRAYSCALE_OBS
+        self.SCALE_OBS = args.SCALE_OBS
 
-        self.ale = ALEInterface()
-        self.ale.setBool(b'display_screen', display_screen)
-        self.ale.setInt(b'frame_skip', frame_skip)
-        self.ale.setBool(b'color_averaging', color_averaging)
-        self._load_rom(rom_name)
-        self.actions = self.ale.getMinimalActionSet()
-        self.sequence = np.empty(shape=(84, 84, 4), dtype=np.uint8)
+        env = gym.make(self.ROM_NAME)
+        env = AtariPreprocessing(env, noop_max=self.NO_OP_MAX, frame_skip=self.FRAME_SKIP, screen_size=self.SCREEN_SIZE,
+                                 terminal_on_life_loss=self.TERMINAL_ON_LIFE_LOSS, grayscale_obs=self.GRAYSCALE_OBS,
+                                 scale_obs=self.SCALE_OBS)
 
-    def _load_rom(self, rom_name):
-        if rom_name in list_games():
-            self.ale.loadROM(get_game_path(rom_name))
-            return
+        self.env = FrameStack(env, num_stack=self.AGENT_HISTORY_LENGTH)
 
-        rom_path = os.path.join(os.path.dirname(os.path.abspath('__file__')), 'ROMs', rom_name)
-        if not os.path.exists(rom_path):
-            self.logger.error("Invalid ROM path")
-            sys.exit(1)
-
-        self.ale.loadROM(bytes(rom_path, encoding='utf-8'))
-
-    def _map_action(self, action):
-        return self.actions[action]
+        self.cur_obs = None
+        self.cur_reward = 0
+        self.done = False
 
     def get_legal_actions(self):
-        return np.arange(len(self.actions), dtype=np.int32)
+        return np.arange(self.env.action_space.n, dtype=np.int32)
 
     def get_random_action(self):
-        return random.choice(self.get_legal_actions())
+        return self.env.action_space.sample()
 
     def initialize_input_sequence(self):
-        self.ale.reset_game()
-        screen = np.empty((210, 160), dtype=np.uint8)
-        for i in range(4):
-            self.ale.act(self._map_action(self.get_random_action()))
-            self.ale.getScreenGrayscale(screen)
-            preprocessed_screen = self.preprocess_screen(screen)
-            self.sequence[:, :, i] = preprocessed_screen
-        return self.sequence
-
-    @staticmethod
-    def preprocess_screen(screen):
-        resized_screen = cv2.resize(screen, dsize=(84, 110), interpolation=cv2.INTER_AREA)
-        cropped_screen = resized_screen[17:110 - 9, :]
-        return cropped_screen
+        self.cur_obs = self.env.reset()
+        return self.cur_obs
 
     def execute_action(self, action):
-        """Executes the action given as parameter and returns a
-        reward and a sequence of length 4 containing preprocessed screens."""
-        screen = np.empty((210, 160), dtype=np.uint8)
-        reward = self.ale.act(self._map_action(action))
-        self.ale.getScreenGrayscale(screen)
-        preprocessed_screen = self.preprocess_screen(screen)
-        self.sequence[:, :, :3] = self.sequence[:, :, 1:]
-        self.sequence[:, :, -1] = preprocessed_screen
-
-        return reward, self.sequence
+        self.cur_obs, self.cur_reward, self.done, info = self.env.step(action)
+        return self.cur_obs, self.cur_reward
 
     def is_game_over(self):
-        return self.ale.game_over()
-
-    def get_observation_shape(self):
-        return (84, 84, 4)
+        return self.done

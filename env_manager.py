@@ -21,7 +21,3 @@ class EnvManager(ABC):
     @abstractmethod
     def is_game_over(self):
         pass
-
-    @abstractmethod
-    def get_observation_shape(self):
-        pass

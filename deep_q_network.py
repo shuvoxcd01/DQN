@@ -42,23 +42,7 @@ class DQN(object):
     def get_predicted_action(self, preprocessed_input):
         return np.argmax(self.get_prediction(preprocessed_input))
 
-    def prepare_minibatch(self, transitions_minibatch, gamma):
-        expected_output_minibatch = []
-        input_minibatch = []
 
-        for current_input, action, reward, next_input, is_terminal_state in transitions_minibatch:
-            q_value = reward
-            if not is_terminal_state:
-                q_value += gamma * np.amax(self.get_prediction(next_input))
-            prediction = self.get_prediction(current_input)
-            prediction[action] = q_value
-            expected_output_minibatch.append(prediction)
-            input_minibatch.append(current_input)
-
-        expected_output_minibatch = np.array(expected_output_minibatch)
-        input_minibatch = np.array(input_minibatch)
-
-        return input_minibatch, expected_output_minibatch
 
     def perform_gradient_descent_step(self, _input, _output):
         self.model.fit(x=_input, y=_output, epochs=1)

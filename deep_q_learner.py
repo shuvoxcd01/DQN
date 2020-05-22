@@ -14,19 +14,28 @@ class DQLAgentArgs(object):
     def __init__(self):
         self.ENV = None
         self.NETWORK = None
+        self.TARGET_NETWORK = self.NETWORK
         self.TOTAL_STEPS = 50000000
         self.UPDATE_FREQ = 4
         self.LEARN_START = 50000
-        self.EPSILON_START = 1.
+        self.EPSILON_START = 1.  # Affects epsilon update
         self.EPSILON_END = 0.1
         self.EPSILON_ENDT = 1000000
         self.DISCOUNT = 0.99
+        self.RESCALE_R = None
+        self.R_MAX = None
+        self.MINIBATCH_SIZE = 32
+
+        assert self.ENV is not None, "Environment not given."
+        assert self.NETWORK is not None, "Network not given."
+        assert self.R_MAX is not None if self.RESCALE_R is not None else True, "R_MAX not defined"
 
 
 class DeepQLearningAgent(object):
     def __init__(self, args, save_model_step=100, epsilon=1., logdir=None):
         self.ENV = args.ENV
         self.NETWORK = args.NETWORK
+        self.TARGET_NETWORK = args.TARGET_NETWORK
         self.TOTAL_STEPS = args.TOTAL_STEPS
         self.UPDATE_FREQ = args.UPDATE_FREQ
         self.LEARN_START = args.LEARN_START
@@ -36,6 +45,12 @@ class DeepQLearningAgent(object):
         self.DISCOUNT = args.DISCOUNT
         self.num_steps = 0
         self.epsilon = self.EPSILON_START
+        self.RESCALE_R = args.RESCALE_R
+        self.R_MAX = args.R_MAX
+        self.actions = self.ENV.get_legal_actions()
+        self.n_actions = len(self.actions)
+        self.MINIBATCH_SIZE = args.MINIBATCH_SIZE
+
         # self.minibatch_size = 32
         # self.experience_replay_memory = deque([], maxlen=1000000)
         # self.env_manager = env_manager() if inspect.isclass(env_manager) else env_manager
@@ -55,7 +70,7 @@ class DeepQLearningAgent(object):
 
     def update_epsilon(self):
         self.epsilon = self.EPSILON_END + max(0, (self.EPSILON_START - self.EPSILON_END) * (
-                    self.EPSILON_ENDT - max(0, self.num_steps - self.LEARN_START)) / self.EPSILON_ENDT)
+                self.EPSILON_ENDT - max(0, self.num_steps - self.LEARN_START)) / self.EPSILON_ENDT)
 
     def e_greedy_select_action(self, preprocessed_input):
         if random.random() <= self.epsilon:
@@ -67,23 +82,51 @@ class DeepQLearningAgent(object):
 
         return action
 
-    def prepare_minibatch(self, transitions_minibatch):
-        expected_output_minibatch = []
-        input_minibatch = []
+    # def prepare_minibatch(self, transitions_minibatch):
+    #     expected_output_minibatch = []
+    #     input_minibatch = []
+    #
+    #     for current_input, action, reward, next_input, is_terminal_state in transitions_minibatch:
+    #         q_value = reward
+    #         if not is_terminal_state:
+    #             q_value += self.DISCOUNT * np.amax(self.get_prediction(next_input))
+    #         prediction = self.get_prediction(current_input)
+    #         prediction[action] = q_value
+    #         expected_output_minibatch.append(prediction)
+    #         input_minibatch.append(current_input)
+    #
+    #     expected_output_minibatch = np.array(expected_output_minibatch)
+    #     input_minibatch = np.array(input_minibatch)
+    #
+    #     return input_minibatch, expected_output_minibatch
 
-        for current_input, action, reward, next_input, is_terminal_state in transitions_minibatch:
-            q_value = reward
-            if not is_terminal_state:
-                q_value += self.DISCOUNT * np.amax(self.get_prediction(next_input))
-            prediction = self.get_prediction(current_input)
-            prediction[action] = q_value
-            expected_output_minibatch.append(prediction)
-            input_minibatch.append(current_input)
+    def get_q_update(self, s, a, r, s2, term):
+        term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)
+        q2_max = tf.reduce_max(tf.cast(tf.identity(self.TARGET_NETWORK.predict(s2)), tf.float32), axis=1)
+        q2 = tf.multiply(tf.multiply(tf.identity(q2_max), self.DISCOUNT), term)
+        delta = tf.cast(tf.identity(r), tf.float32)
+        if self.RESCALE_R:
+            delta = tf.divide(delta, self.R_MAX)
+        delta = tf.add(delta, q2)
+        q_all = tf.cast(self.NETWORK.predict(s), tf.float32)
+        q = np.empty(shape=q_all.shape[0], dtype=np.float32)
 
-        expected_output_minibatch = np.array(expected_output_minibatch)
-        input_minibatch = np.array(input_minibatch)
+        for i in range(q_all.shape[0]):
+            q[i] = (q_all[i][a[i]])
 
-        return input_minibatch, expected_output_minibatch
+        q = tf.Variable(q)
+        delta = tf.add(delta, tf.multiply(q, -1))
+
+        # clip delta not applied
+
+        targets = np.zeros(shape=(self.MINIBATCH_SIZE, self.n_actions), dtype=np.float32)
+
+        for i in range(min(self.MINIBATCH_SIZE, a.shape[0])):
+            targets[i][a[i]] = delta[i]
+
+        targets = tf.Variable(targets)
+
+        return targets, delta, q2_max
 
     def learn_with_experience_replay(self):
         """vanilla deep_q_learning_with_experience_replay"""
@@ -106,7 +149,7 @@ class DeepQLearningAgent(object):
 
                 if len(self.experience_replay_memory) > self.minibatch_size:
                     sample_minibatch = random.sample(self.experience_replay_memory, k=self.minibatch_size)
-                    _input, _output = self.DQN.prepare_minibatch(sample_minibatch, self.gamma)
+                    _input, _output = self.prepare_minibatch(sample_minibatch)
                     self.DQN.perform_gradient_descent_step(_input, _output)
 
             avg_q_value_per_action = sum(episode_q_value_list) / float(len(episode_q_value_list))

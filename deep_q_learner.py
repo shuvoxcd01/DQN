@@ -8,6 +8,7 @@ from collections import deque
 
 from ale_manager import ALEManager
 from space_Invaders_q_network import DQNSpaceInvaders
+from transition_table import TransitionTable
 
 
 class DQLAgentArgs(object):
@@ -36,34 +37,38 @@ class DQLAgentArgs(object):
 
 class DeepQLearningAgent(object):
     def __init__(self, args, save_model_step=100, epsilon=1., logdir=None):
-        self.ENV = args.ENV
-        self.NETWORK = args.NETWORK
-        self.TARGET_NETWORK = tf.keras.models.clone_model(self.NETWORK)
-        self.TOTAL_STEPS = args.TOTAL_STEPS
-        self.UPDATE_FREQ = args.UPDATE_FREQ
-        self.LEARN_START = args.LEARN_START
-        self.EPSILON_START = args.EPSILON_START
-        self.EPSILON_END = args.EPSILON_END
-        self.EPSILON_ENDT = args.EPSILON_ENDT
-        self.DISCOUNT = args.DISCOUNT
+        self.env = args.env
+        self.network = args.network
+        self.target_network = tf.keras.models.clone_model(self.network)
+        self.total_steps = args.total_steps
+        self.update_freq = args.update_freq
+        self.learn_start = args.learn_start
+        self.epsilon_start = args.epsilon_start
+        self.epsilon_end = args.epsilon_end
+        self.epsilon_endt = args.epsilon_endt
+        self.discount = args.discount
         self.num_steps = 0
-        self.epsilon = self.EPSILON_START
-        self.RESCALE_R = args.RESCALE_R
-        self.R_MAX = args.R_MAX
-        self.actions = self.ENV.get_legal_actions()
+        self.epsilon = self.epsilon_start
+        self.rescale_r = args.rescale_r
+        self.r_max = args.r_max
+        self.actions = self.env.get_legal_actions()
         self.n_actions = len(self.actions)
-        self.MINIBATCH_SIZE = args.MINIBATCH_SIZE
+        self.minibatch_size = args.minibatch_size
 
         # learning rate annealing
-        self.LR_START = 0.01 if args.LR is None else args.LR
-        self.LR = self.LR_START
-        self.LR_END = self.LR if args.LR_END is None else args.LR_END
-        self.LR_ENDT = 1000000 if args.LR_ENDT is None else args.LR_ENDT
+        self.lr_start = 0.01 if args.lr is None else args.lr
+        self.lr = self.lr_start
+        self.lr_end = self.lr if args.lr_end is None else args.lr_end
+        self.lr_endt = 1000000 if args.lr_endt is None else args.lr_endt
 
-        self.deltas = tf.zeros_like(self.NETWORK.weights)
-        self.tmp = tf.zeros_like(self.NETWORK.weights)
-        self.g = tf.zeros_like(self.NETWORK.weights)
-        self.g2 = tf.zeros_like(self.NETWORK.weights)
+        self.deltas = tf.zeros_like(self.network.weights)
+        self.tmp = tf.zeros_like(self.network.weights)
+        self.g = tf.zeros_like(self.network.weights)
+        self.g2 = tf.zeros_like(self.network.weights)
+        self.experience_replay_memory = TransitionTable()
+
+        logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S") if logdir is None else logdir
+        self.file_writer = tf.summary.create_file_writer(logdir=logdir)
 
         # self.minibatch_size = 32
         # self.experience_replay_memory = deque([], maxlen=1000000)
@@ -83,8 +88,8 @@ class DeepQLearningAgent(object):
         # self.save_model_step = save_model_step
 
     def update_epsilon(self):
-        self.epsilon = self.EPSILON_END + max(0, (self.EPSILON_START - self.EPSILON_END) * (
-                self.EPSILON_ENDT - max(0, self.num_steps - self.LEARN_START)) / self.EPSILON_ENDT)
+        self.epsilon = self.epsilon_end + max(0, (self.epsilon_start - self.epsilon_end) * (
+                self.epsilon_endt - max(0, self.num_steps - self.learn_start)) / self.epsilon_endt)
 
     def e_greedy_select_action(self, preprocessed_input):
         if random.random() <= self.epsilon:
@@ -116,13 +121,13 @@ class DeepQLearningAgent(object):
 
     def get_q_update(self, s, a, r, s2, term):
         term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)
-        q2_max = tf.reduce_max(tf.cast(tf.identity(self.TARGET_NETWORK(s2)), tf.float32), axis=1)
-        q2 = tf.multiply(tf.multiply(tf.identity(q2_max), self.DISCOUNT), term)
+        q2_max = tf.reduce_max(tf.cast(tf.identity(self.target_network(s2)), tf.float32), axis=1)
+        q2 = tf.multiply(tf.multiply(tf.identity(q2_max), self.discount), term)
         delta = tf.cast(tf.identity(r), tf.float32)
-        if self.RESCALE_R:
-            delta = tf.divide(delta, self.R_MAX)
+        if self.rescale_r:
+            delta = tf.divide(delta, self.r_max)
         delta = tf.add(delta, q2)
-        q_all = tf.cast(self.NETWORK(s), tf.float32)
+        q_all = tf.cast(self.network(s), tf.float32)
         q = np.empty(shape=q_all.shape[0], dtype=np.float32)
 
         for i in range(q_all.shape[0]):
@@ -133,9 +138,9 @@ class DeepQLearningAgent(object):
 
         # clip delta not applied
 
-        targets = np.zeros(shape=(self.MINIBATCH_SIZE, self.n_actions), dtype=np.float32)
+        targets = np.zeros(shape=(self.minibatch_size, self.n_actions), dtype=np.float32)
 
-        for i in range(min(self.MINIBATCH_SIZE, a.shape[0])):
+        for i in range(min(self.minibatch_size, a.shape[0])):
             targets[i][a[i]] = delta[i]
 
         targets = tf.Variable(targets)
@@ -145,16 +150,16 @@ class DeepQLearningAgent(object):
     def q_learn_minibatch(self, s, a, r, s2, term):
         targets, delta, q2_max = self.get_q_update(s, a, r, s2, term)
         with tf.GradientTape() as t:
-            y_hat = self.NETWORK(s)
+            y_hat = self.network(s)
 
-        dw = t.gradient(y_hat, self.NETWORK.weights, output_gradients=targets)
+        dw = t.gradient(y_hat, self.network.weights, output_gradients=targets)
 
         # Ignoring weight cost
 
         # compute linearly annealed learning rate
-        t = max(0, self.num_steps - self.LEARN_START)
-        self.LR = (self.LR_START - self.LR_END) * (self.LR_ENDT - t) / self.LR_ENDT + self.LR_END
-        self.LR = max(self.LR, self.LR_END)
+        t = max(0, self.num_steps - self.learn_start)
+        self.lr = (self.lr_start - self.lr_end) * (self.lr_endt - t) / self.lr_endt + self.lr_end
+        self.lr = max(self.lr, self.lr_end)
 
         self.g = tf.multiply(self.g, 0.95) + tf.multiply(0.05, dw)
         self.tmp = tf.multiply(dw, dw)
@@ -165,42 +170,35 @@ class DeepQLearningAgent(object):
         self.tmp = tf.add(self.tmp, 0.01)
         self.tmp = tf.sqrt(self.tmp)
 
-        self.deltas = tf.multiply(self.deltas, 0) + tf.multiply(tf.divide(dw, self.tmp), self.LR)
-        self.NETWORK.set_weights(tf.add(self.NETWORK.weights, self.deltas))
+        self.deltas = tf.multiply(self.deltas, 0) + tf.multiply(tf.divide(dw, self.tmp), self.lr)
+        self.network.set_weights(tf.add(self.network.weights, self.deltas))
 
     def learn_with_experience_replay(self):
-        """vanilla deep_q_learning_with_experience_replay"""
-        while self.n_episode < self.num_total_episode:
-            preprocessed_input = self.env_manager.initialize_input_sequence()
-            cumulative_reward = 0
-            episode_q_value_list = []
-            while not self.env_manager.is_game_over():
-                action = self.e_greedy_select_action(preprocessed_input)
-                reward, next_preprocessed_input = self.env_manager.execute_action(action)
+        preprocessed_input = self.env.initialize_input_sequence()
 
-                cumulative_reward += reward
-                q_value_for_selected_action = self.DQN.get_prediction(preprocessed_input)[action]
-                episode_q_value_list.append(q_value_for_selected_action)
+        while self.num_steps < self.total_steps:
+            self.num_steps += 1
 
-                self.experience_replay_memory.append(
-                    (preprocessed_input, action, reward, next_preprocessed_input, self.env_manager.is_game_over()))
+            if self.env.is_game_over():
+                preprocessed_input = self.env.initialize_input_sequence()
 
-                preprocessed_input = next_preprocessed_input
+            action = self.e_greedy_select_action(preprocessed_input)
+            reward, next_preprocessed_input = self.env.execute_action(action)
 
-                if len(self.experience_replay_memory) > self.minibatch_size:
-                    sample_minibatch = random.sample(self.experience_replay_memory, k=self.minibatch_size)
-                    _input, _output = self.prepare_minibatch(sample_minibatch)
-                    self.DQN.perform_gradient_descent_step(_input, _output)
+            self.experience_replay_memory.add(
+                (preprocessed_input, action, reward, next_preprocessed_input, self.env.is_game_over()))
 
-            avg_q_value_per_action = sum(episode_q_value_list) / float(len(episode_q_value_list))
+            preprocessed_input = next_preprocessed_input
 
-            with self.file_writer.as_default():
-                tf.summary.scalar('Return per episode', cumulative_reward, step=self.n_episode)
-                tf.summary.scalar('Average q_value', avg_q_value_per_action, step=self.n_episode)
-                tf.summary.scalar('epsilon', self.epsilon, step=self.n_episode)
-                tf.summary.flush()
+            if (self.num_steps > self.learn_start) and (self.num_steps % self.update_freq == 0):
+                s, a, r, s2, term = self.experience_replay_memory.sample(self.minibatch_size)
+                self.q_learn_minibatch(s, a, r, s2, term)
 
-            if ((self.n_episode + 1) % self.save_model_step) == 0:
-                self.DQN.save_model('-episode:' + str(self.n_episode + 1) + '-epsilon:' + str(self.epsilon))
-
-            self.n_episode += 1
+            # with self.file_writer.as_default():
+            #     tf.summary.scalar('Return per episode', cumulative_reward, step=self.n_episode)
+            #     tf.summary.scalar('Average q_value', avg_q_value_per_action, step=self.n_episode)
+            #     tf.summary.scalar('epsilon', self.epsilon, step=self.n_episode)
+            #     tf.summary.flush()
+            #
+            # if ((self.n_episode + 1) % self.save_model_step) == 0:
+            #     self.DQN.save_model('-episode:' + str(self.n_episode + 1) + '-epsilon:' + str(self.epsilon))

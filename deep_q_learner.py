@@ -68,23 +68,6 @@ class DeepQLearningAgent(object):
         logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S") if logdir is None else logdir
         self.file_writer = tf.summary.create_file_writer(logdir=logdir)
 
-        # self.minibatch_size = 32
-        # self.experience_replay_memory = deque([], maxlen=1000000)
-        # self.env_manager = env_manager() if inspect.isclass(env_manager) else env_manager
-        # self.possible_actions = self.env_manager.get_legal_actions()
-        # self.input_shape = self.env_manager.get_observation_shape()
-        # self.output_units = len(self.possible_actions)
-        # self.DQN = q_network(input_shape=self.input_shape, output_units=self.output_units) if inspect.isclass(
-        #     q_network) else q_network
-        # self.epsilon = float(epsilon)
-        # self.gamma = 0.9
-        # self.num_total_episode = num_total_episode
-        # self.n_episode = episode_starts_from
-        # self.epsilon_decay_rate = epsilon_decay_rate
-        # logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S") if logdir is None else logdir
-        # self.file_writer = tf.summary.create_file_writer(logdir=logdir)
-        # self.save_model_step = save_model_step
-
     def update_epsilon(self):
         self.epsilon = self.epsilon_end + max(0, (self.epsilon_start - self.epsilon_end) * (
                 self.epsilon_endt - max(0, self.num_steps - self.learn_start)) / self.epsilon_endt)
@@ -98,24 +81,6 @@ class DeepQLearningAgent(object):
         self.update_epsilon()
 
         return action
-
-    # def prepare_minibatch(self, transitions_minibatch):
-    #     expected_output_minibatch = []
-    #     input_minibatch = []
-    #
-    #     for current_input, action, reward, next_input, is_terminal_state in transitions_minibatch:
-    #         q_value = reward
-    #         if not is_terminal_state:
-    #             q_value += self.DISCOUNT * np.amax(self.get_prediction(next_input))
-    #         prediction = self.get_prediction(current_input)
-    #         prediction[action] = q_value
-    #         expected_output_minibatch.append(prediction)
-    #         input_minibatch.append(current_input)
-    #
-    #     expected_output_minibatch = np.array(expected_output_minibatch)
-    #     input_minibatch = np.array(input_minibatch)
-    #
-    #     return input_minibatch, expected_output_minibatch
 
     def get_q_update(self, s, a, r, s2, term):
         term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)

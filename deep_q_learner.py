@@ -14,7 +14,6 @@ class DQLAgentArgs(object):
     def __init__(self):
         self.ENV = None
         self.NETWORK = None
-        self.TARGET_NETWORK = self.NETWORK
         self.TOTAL_STEPS = 50000000
         self.UPDATE_FREQ = 4
         self.LEARN_START = 50000
@@ -25,6 +24,10 @@ class DQLAgentArgs(object):
         self.RESCALE_R = None
         self.R_MAX = None
         self.MINIBATCH_SIZE = 32
+        # learning reate annealing
+        self.LR = None
+        self.LR_END = None
+        self.LR_ENDT = None
 
         assert self.ENV is not None, "Environment not given."
         assert self.NETWORK is not None, "Network not given."
@@ -35,7 +38,7 @@ class DeepQLearningAgent(object):
     def __init__(self, args, save_model_step=100, epsilon=1., logdir=None):
         self.ENV = args.ENV
         self.NETWORK = args.NETWORK
-        self.TARGET_NETWORK = args.TARGET_NETWORK
+        self.TARGET_NETWORK = tf.keras.models.clone_model(self.NETWORK)
         self.TOTAL_STEPS = args.TOTAL_STEPS
         self.UPDATE_FREQ = args.UPDATE_FREQ
         self.LEARN_START = args.LEARN_START
@@ -50,6 +53,17 @@ class DeepQLearningAgent(object):
         self.actions = self.ENV.get_legal_actions()
         self.n_actions = len(self.actions)
         self.MINIBATCH_SIZE = args.MINIBATCH_SIZE
+
+        # learning rate annealing
+        self.LR_START = 0.01 if args.LR is None else args.LR
+        self.LR = self.LR_START
+        self.LR_END = self.LR if args.LR_END is None else args.LR_END
+        self.LR_ENDT = 1000000 if args.LR_ENDT is None else args.LR_ENDT
+
+        self.deltas = tf.zeros_like(self.NETWORK.weights)
+        self.tmp = tf.zeros_like(self.NETWORK.weights)
+        self.g = tf.zeros_like(self.NETWORK.weights)
+        self.g2 = tf.zeros_like(self.NETWORK.weights)
 
         # self.minibatch_size = 32
         # self.experience_replay_memory = deque([], maxlen=1000000)
@@ -102,13 +116,13 @@ class DeepQLearningAgent(object):
 
     def get_q_update(self, s, a, r, s2, term):
         term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)
-        q2_max = tf.reduce_max(tf.cast(tf.identity(self.TARGET_NETWORK.predict(s2)), tf.float32), axis=1)
+        q2_max = tf.reduce_max(tf.cast(tf.identity(self.TARGET_NETWORK(s2)), tf.float32), axis=1)
         q2 = tf.multiply(tf.multiply(tf.identity(q2_max), self.DISCOUNT), term)
         delta = tf.cast(tf.identity(r), tf.float32)
         if self.RESCALE_R:
             delta = tf.divide(delta, self.R_MAX)
         delta = tf.add(delta, q2)
-        q_all = tf.cast(self.NETWORK.predict(s), tf.float32)
+        q_all = tf.cast(self.NETWORK(s), tf.float32)
         q = np.empty(shape=q_all.shape[0], dtype=np.float32)
 
         for i in range(q_all.shape[0]):
@@ -127,6 +141,32 @@ class DeepQLearningAgent(object):
         targets = tf.Variable(targets)
 
         return targets, delta, q2_max
+
+    def q_learn_minibatch(self, s, a, r, s2, term):
+        targets, delta, q2_max = self.get_q_update(s, a, r, s2, term)
+        with tf.GradientTape() as t:
+            y_hat = self.NETWORK(s)
+
+        dw = t.gradient(y_hat, self.NETWORK.weights, output_gradients=targets)
+
+        # Ignoring weight cost
+
+        # compute linearly annealed learning rate
+        t = max(0, self.num_steps - self.LEARN_START)
+        self.LR = (self.LR_START - self.LR_END) * (self.LR_ENDT - t) / self.LR_ENDT + self.LR_END
+        self.LR = max(self.LR, self.LR_END)
+
+        self.g = tf.multiply(self.g, 0.95) + tf.multiply(0.05, dw)
+        self.tmp = tf.multiply(dw, dw)
+        self.g2 = tf.multiply(self.g2, 0.95) + tf.multiply(0.05, self.tmp)
+        self.tmp = tf.multiply(self.g, self.g)
+        self.tmp = tf.multiply(self.tmp, -1)
+        self.tmp = tf.add(self.tmp, self.g2)
+        self.tmp = tf.add(self.tmp, 0.01)
+        self.tmp = tf.sqrt(self.tmp)
+
+        self.deltas = tf.multiply(self.deltas, 0) + tf.multiply(tf.divide(dw, self.tmp), self.LR)
+        self.NETWORK.set_weights(tf.add(self.NETWORK.weights, self.deltas))
 
     def learn_with_experience_replay(self):
         """vanilla deep_q_learning_with_experience_replay"""

@@ -54,11 +54,12 @@ class ALEManager(EnvManager):
 
     def initialize_input_sequence(self):
         self.cur_obs = self.env.reset()
-        return self.cur_obs
+        self.done = False
+        return np.moveaxis(self.cur_obs, 0, -1)
 
     def execute_action(self, action):
         self.cur_obs, self.cur_reward, self.done, info = self.env.step(action)
-        return self.cur_obs, self.cur_reward
+        return self.cur_reward, np.moveaxis(self.cur_obs, 0, -1)
 
     def is_game_over(self):
         return self.done

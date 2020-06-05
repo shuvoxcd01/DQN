@@ -1,42 +1,39 @@
 import random
-import inspect
-import numpy as np
 from datetime import datetime
 
+import numpy as np
 import tensorflow as tf
-from collections import deque
 
-from ale_manager import ALEManager
-from space_Invaders_q_network import DQNSpaceInvaders
 from transition_table import TransitionTable
 
 
 class DQLAgentArgs(object):
     def __init__(self):
-        self.ENV = None
-        self.NETWORK = None
-        self.TOTAL_STEPS = 50000000
-        self.UPDATE_FREQ = 4
-        self.LEARN_START = 50000
-        self.EPSILON_START = 1.  # Affects epsilon update
-        self.EPSILON_END = 0.1
-        self.EPSILON_ENDT = 1000000
-        self.DISCOUNT = 0.99
-        self.RESCALE_R = None
-        self.R_MAX = None
-        self.MINIBATCH_SIZE = 32
+        self.env = None
+        self.network = None
+        self.total_steps = 50000000
+        self.update_freq = 4
+        self.learn_start = 50000
+        self.epsilon_start = 1.  # Affects epsilon update
+        self.epsilon_end = 0.1
+        self.epsilon_endt = 1000000
+        self.discount = 0.99
+        self.rescale_r = None
+        self.r_max = None
+        self.minibatch_size = 32
+        self.target_q = 10000
         # learning reate annealing
-        self.LR = None
-        self.LR_END = None
-        self.LR_ENDT = None
+        self.lr = None
+        self.lr_end = None
+        self.lr_endt = None
 
-        assert self.ENV is not None, "Environment not given."
-        assert self.NETWORK is not None, "Network not given."
-        assert self.R_MAX is not None if self.RESCALE_R is not None else True, "R_MAX not defined"
+        assert self.env is not None, "Environment not given."
+        assert self.network is not None, "Network not given."
+        assert self.r_max is not None if self.rescale_r is not None else True, "R_MAX not defined"
 
 
 class DeepQLearningAgent(object):
-    def __init__(self, args, save_model_step=100, epsilon=1., logdir=None):
+    def __init__(self, args, logdir=None):
         self.env = args.env
         self.network = args.network
         self.target_network = tf.keras.models.clone_model(self.network)
@@ -54,6 +51,7 @@ class DeepQLearningAgent(object):
         self.actions = self.env.get_legal_actions()
         self.n_actions = len(self.actions)
         self.minibatch_size = args.minibatch_size
+        self.target_q = args.target_q
 
         # learning rate annealing
         self.lr_start = 0.01 if args.lr is None else args.lr
@@ -93,9 +91,9 @@ class DeepQLearningAgent(object):
 
     def e_greedy_select_action(self, preprocessed_input):
         if random.random() <= self.epsilon:
-            action = self.env_manager.get_random_action()
+            action = self.env.get_random_action()
         else:
-            action = self.DQN.get_predicted_action(preprocessed_input)
+            action = np.amax(self.network.predict(np.expand_dims(preprocessed_input, 0))[0])
 
         self.update_epsilon()
 
@@ -190,11 +188,18 @@ class DeepQLearningAgent(object):
 
             preprocessed_input = next_preprocessed_input
 
+            # perform gradient descent step
             if (self.num_steps > self.learn_start) and (self.num_steps % self.update_freq == 0):
                 s, a, r, s2, term = self.experience_replay_memory.sample(self.minibatch_size)
                 self.q_learn_minibatch(s, a, r, s2, term)
 
-            # with self.file_writer.as_default():
+            # update target-q network
+            if self.target_q is not None and self.num_steps % self.target_q == 1:
+                self.target_network = tf.keras.models.clone_model(self.network)
+
+            with self.file_writer.as_default():
+                tf.summary.scalar('Reward', reward, step=self.num_steps)
+                tf.summary.flush()
             #     tf.summary.scalar('Return per episode', cumulative_reward, step=self.n_episode)
             #     tf.summary.scalar('Average q_value', avg_q_value_per_action, step=self.n_episode)
             #     tf.summary.scalar('epsilon', self.epsilon, step=self.n_episode)

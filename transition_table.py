@@ -1,12 +1,14 @@
 from collections import deque
 import random
 import numpy as np
+import tensorflow as tf
 
 
 class TransitionTable(object):
     def __init__(self, maxlen=1000000):
         self.transitions = deque(maxlen=maxlen)
 
+    @tf.function
     def sample(self, size=1):
         assert len(self.transitions) >= size
         samples = random.sample(self.transitions, size)
@@ -23,6 +25,12 @@ class TransitionTable(object):
             r[i] = samples[i][2]
             s2[i] = samples[i][3]
             term[i] = samples[i][4]
+
+        s = tf.Variable(s)
+        a = tf.Variable(a)
+        r = tf.Variable(r)
+        s2 = tf.Variable(s2)
+        term = tf.Variable(term)
 
         return s, a, r, s2, term
 

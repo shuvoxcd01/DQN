@@ -30,7 +30,7 @@ class ALEManager(EnvManager):
         self.FRAME_SKIP = args.FRAME_SKIP
         self.COLOR_AVERAGING = args.COLOR_AVERAGING
         self.NO_OP_MAX = args.NO_OP_MAX
-        self.AGENT_HISTORY_LENGTH = args.AGENT_HISTORY
+        self.AGENT_HISTORY_LENGTH = args.AGENT_HISTORY_LENGTH
         self.TERMINAL_ON_LIFE_LOSS = args.TERMINAL_ON_LIFE_LOSS
         self.GRAYSCALE_OBS = args.GRAYSCALE_OBS
         self.SCALE_OBS = args.SCALE_OBS

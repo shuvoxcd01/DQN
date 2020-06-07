@@ -121,7 +121,7 @@ class DeepQLearningAgent(object):
         if random.random() <= self.epsilon:
             action = self.env.get_random_action()
         else:
-            action = np.amax(self.network.predict(np.expand_dims(preprocessed_input, 0))[0])
+            action = np.argmax(self.network.predict(np.expand_dims(preprocessed_input, 0))[0])
 
         self.update_epsilon()
 

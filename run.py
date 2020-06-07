@@ -3,6 +3,7 @@ from ale_manager import ALEManager, ALEManagerArgs
 from deep_q_learner import DeepQLearningAgent, DQLAgentArgs
 
 tf.debugging.set_log_device_placement(True)
+tf.keras.backend.set_floatx('float32')
 
 if __name__ == '__main__':
     env = ALEManager(ALEManagerArgs())

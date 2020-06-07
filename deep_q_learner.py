@@ -76,6 +76,16 @@ class DeepQLearningAgent(object):
         self.lr_endt = 1000000 if args.lr_endt is None else args.lr_endt
 
         # TODO
+        self.deltas = []
+        self.tmp = []
+        self.g = []
+        self.g2 = []
+        for i in range(len(self.network.weights)):
+            self.deltas.append(tf.zeros_like(self.network.weights[i]))
+            self.tmp.append(tf.zeros_like(self.network.weights[i]))
+            self.g.append(tf.zeros_like(self.network.weights[i]))
+            self.g2.append(tf.zeros_like(self.network.weights[i]))
+
         # self.deltas = tf.zeros_like(tf.identity(self.network.weights))
         # self.tmp = tf.zeros_like(tf.identity(self.network.weights))
         # self.g = tf.zeros_like(tf.identity(self.network.weights))
@@ -117,7 +127,6 @@ class DeepQLearningAgent(object):
 
         return action
 
-    @tf.function
     def get_q_update(self, s, a, r, s2, term):
         term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)
         q2_max = tf.reduce_max(tf.cast(tf.identity(self.target_network(s2)), tf.float32), axis=1)
@@ -146,7 +155,6 @@ class DeepQLearningAgent(object):
 
         return targets, delta, q2_max
 
-    @tf.function
     def q_learn_minibatch(self, s, a, r, s2, term):
         targets, delta, q2_max = self.get_q_update(s, a, r, s2, term)
         with tf.GradientTape() as t:
@@ -162,21 +170,24 @@ class DeepQLearningAgent(object):
         self.lr = max(self.lr, self.lr_end)
 
         # TODO
-        # assert len(dw) == len(self.network.weights), "len(dw) and len(network.weights) does not match"
-        #
-        # self.g = tf.multiply(self.g, 0.95) + tf.multiply(0.05, dw)
-        # self.tmp = tf.multiply(dw, dw)
-        # self.g2 = tf.multiply(self.g2, 0.95) + tf.multiply(0.05, self.tmp)
-        # self.tmp = tf.multiply(self.g, self.g)
-        # self.tmp = tf.multiply(self.tmp, -1)
-        # self.tmp = tf.add(self.tmp, self.g2)
-        # self.tmp = tf.add(self.tmp, 0.01)
-        # self.tmp = tf.sqrt(self.tmp)
-        #
-        # self.deltas = tf.multiply(self.deltas, 0) + tf.multiply(tf.divide(dw, self.tmp), self.lr)
-        # self.network.set_weights(tf.add(self.network.weights, self.deltas))
+        assert len(dw) == len(self.network.weights), "len(dw) and len(network.weights) does not match"
 
-    @tf.function
+        tmp_weights = []
+
+        for i in range(len(self.network.weights)):
+            self.g[i] = tf.multiply(self.g[i], 0.95) + tf.multiply(0.05, dw[i])
+            self.tmp[i] = tf.multiply(dw[i], dw[i])
+            self.g2[i] = tf.multiply(self.g2[i], 0.95) + tf.multiply(0.05, self.tmp[i])
+            self.tmp[i] = tf.multiply(self.g[i], self.g[i])
+            self.tmp[i] = tf.multiply(self.tmp[i], -1)
+            self.tmp[i] = tf.add(self.tmp[i], self.g2[i])
+            self.tmp[i] = tf.add(self.tmp[i], 0.01)
+            self.tmp[i] = tf.sqrt(self.tmp[i])
+            self.deltas[i] = tf.multiply(self.deltas[i], 0) + tf.multiply(tf.divide(dw[i], self.tmp[i]), self.lr)
+            tmp_weights.append(tf.add(self.network.weights[i], self.deltas[i]))
+
+        self.network.set_weights(tmp_weights)
+
     def learn_with_experience_replay(self):
         try:
             return_val = 0  # for TensorBoard
@@ -253,5 +264,9 @@ class DeepQLearningAgent(object):
             raise
 
         finally:
+            # Close file writers
             self.scalar_file_writer.close()
             self.histogram_file_writer.close()
+
+            # Save model
+            self.network.save(filepath=self.save_model_path + str(self.num_steps))

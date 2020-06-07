@@ -1,3 +1,4 @@
+import json
 import random
 from datetime import datetime
 import os
@@ -24,12 +25,13 @@ class DQLAgentArgs(object):
         self.r_max = None
         self.minibatch_size = 32
         self.target_q = 10000
+
         # learning reate annealing
         self.lr = None
         self.lr_end = None
         self.lr_endt = None
 
-        self.save_model_steps = 1000
+        self.save_model_steps = 500000
         self.save_model_path = None
 
         self.write_weight_histogram = False
@@ -75,7 +77,6 @@ class DeepQLearningAgent(object):
         self.lr_end = self.lr if args.lr_end is None else args.lr_end
         self.lr_endt = 1000000 if args.lr_endt is None else args.lr_endt
 
-        # TODO
         self.deltas = []
         self.tmp = []
         self.g = []
@@ -85,11 +86,6 @@ class DeepQLearningAgent(object):
             self.tmp.append(tf.zeros_like(self.network.weights[i]))
             self.g.append(tf.zeros_like(self.network.weights[i]))
             self.g2.append(tf.zeros_like(self.network.weights[i]))
-
-        # self.deltas = tf.zeros_like(tf.identity(self.network.weights))
-        # self.tmp = tf.zeros_like(tf.identity(self.network.weights))
-        # self.g = tf.zeros_like(tf.identity(self.network.weights))
-        # self.g2 = tf.zeros_like(tf.identity(self.network.weights))
 
         self.experience_replay_memory = TransitionTable()
 
@@ -169,7 +165,6 @@ class DeepQLearningAgent(object):
         self.lr = (self.lr_start - self.lr_end) * (self.lr_endt - t) / self.lr_endt + self.lr_end
         self.lr = max(self.lr, self.lr_end)
 
-        # TODO
         assert len(dw) == len(self.network.weights), "len(dw) and len(network.weights) does not match"
 
         tmp_weights = []
@@ -269,4 +264,13 @@ class DeepQLearningAgent(object):
             self.histogram_file_writer.close()
 
             # Save model
-            self.network.save(filepath=self.save_model_path + str(self.num_steps))
+            self.network.save(filepath=self.save_model_path + str(self.num_steps) + "saved_from_finally_block")
+
+            agent_state = {
+                "num_steps": self.num_steps,
+                "epsilon": self.epsilon,
+                "lr": self.lr
+            }
+
+            with open(os.path.join(self.save_model_path,'agent_state.json'), 'w') as f:
+                json.dump(agent_state, f)

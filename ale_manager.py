@@ -58,6 +58,8 @@ class ALEManager(EnvManager):
         return np.moveaxis(self.cur_obs, 0, -1)
 
     def execute_action(self, action):
+        if self.SHOW_SCREEN:
+            self.env.render()
         self.cur_obs, self.cur_reward, self.done, info = self.env.step(action)
         return self.cur_reward, np.moveaxis(self.cur_obs, 0, -1)
 

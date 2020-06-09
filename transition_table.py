@@ -5,7 +5,7 @@ import tensorflow as tf
 
 
 class TransitionTable(object):
-    def __init__(self, maxlen=1000000):
+    def __init__(self, maxlen=100000):
         self.transitions = deque(maxlen=maxlen)
 
     def sample(self, size=1):

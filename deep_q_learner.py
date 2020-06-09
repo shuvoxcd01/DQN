@@ -31,7 +31,7 @@ class DQLAgentArgs(object):
         self.lr_end = None
         self.lr_endt = None
 
-        self.save_model_steps = 500000
+        self.save_model_steps = 10000
         self.save_model_path = None
 
         self.write_weight_histogram = False
@@ -55,7 +55,7 @@ class DeepQLearningAgent(object):
         self.epsilon_end = args.epsilon_end
         self.epsilon_endt = args.epsilon_endt
         self.discount = args.discount
-        self.num_steps = 0
+        self.num_steps = 0 if args.num_steps is None else args.num_steps
         self.epsilon = self.epsilon_start
         self.rescale_r = args.rescale_r
         self.r_max = args.r_max
@@ -251,7 +251,7 @@ class DeepQLearningAgent(object):
                     tf.summary.scalar('epsilon', self.epsilon, step=self.num_steps)
                     tf.summary.flush()
 
-                if (self.num_steps % self.save_model_steps) == 0:
+                if (self.num_steps > self.learn_start) and (self.num_steps % self.save_model_steps) == 0:
                     self.network.save(filepath=self.save_model_path + str(self.num_steps))
 
         except Exception as exception:

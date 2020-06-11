@@ -4,11 +4,11 @@ import tensorflow as tf
 from ale_manager import ALEManager, ALEManagerArgs
 from deep_q_learner import DeepQLearningAgent, DQLAgentArgs
 
-#tf.debugging.set_log_device_placement(True)
-#tf.keras.backend.set_floatx('float32')
+# tf.debugging.set_log_device_placement(True)
+# tf.keras.backend.set_floatx('float32')
 
 if __name__ == '__main__':
-    network = tf.keras.models.load_model('models/612872saved_from_finally_block-h5')
+    network = tf.keras.models.load_model('models/815864saved_from_finally_block-h5')
 
     with open('models/agent_state.json', 'r') as f:
         agent_state = json.load(f)
@@ -18,6 +18,12 @@ if __name__ == '__main__':
     lr = agent_state["lr"]
     learn_start = num_steps + 50000
     write_weight_histogram = True
+
+    print("num_steps: ", num_steps)
+    print("epsilon_start : ", epsilon)
+    print("lr: ", lr)
+    print("learn_start: ", learn_start)
+    print("write_weight_histogram: ", write_weight_histogram)
 
     env = ALEManager(ALEManagerArgs())
     agent_args = DQLAgentArgs()

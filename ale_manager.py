@@ -65,3 +65,6 @@ class ALEManager(EnvManager):
 
     def is_game_over(self):
         return self.done
+
+    def get_observation_shape(self):
+        return self.SCREEN_SIZE, self.SCREEN_SIZE, self.AGENT_HISTORY_LENGTH

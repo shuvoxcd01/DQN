@@ -5,7 +5,9 @@ import os
 
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
+# from tensorflow import keras
+import keras
+# import keras.backend as tf
 
 from transition_table import TransitionTable
 
@@ -25,6 +27,7 @@ class DQLAgentArgs(object):
         self.r_max = None
         self.minibatch_size = 32
         self.target_q = 10000
+        self.num_steps = None
 
         # learning reate annealing
         self.lr = None
@@ -36,6 +39,9 @@ class DQLAgentArgs(object):
 
         self.write_weight_histogram = False
 
+        self.logdir_scalar = None
+        self.logdir_histogram = None
+
 
 class DeepQLearningAgent(object):
     def __init__(self, args):
@@ -43,10 +49,13 @@ class DeepQLearningAgent(object):
         assert self.env is not None, "Environment not given."
         self.actions = self.env.get_legal_actions()
         self.n_actions = len(self.actions)
+        self.observation_shape = self.env.get_observation_shape()
 
         self.write_weight_histogram = args.write_weight_histogram
         self.network = args.network if args.network is not None else self.create_network()
-        self.target_network = tf.keras.models.clone_model(self.network)
+        # self.target_network = tf.keras.models.clone_model(self.network)
+        self.target_network = keras.models.clone_model(self.network)
+        self.target_network.set_weights(self.network.get_weights())
 
         self.total_steps = args.total_steps
         self.update_freq = args.update_freq
@@ -87,18 +96,19 @@ class DeepQLearningAgent(object):
             self.g.append(tf.zeros_like(self.network.weights[i]))
             self.g2.append(tf.zeros_like(self.network.weights[i]))
 
-        self.experience_replay_memory = TransitionTable()
+        self.experience_replay_memory = TransitionTable(shape=self.observation_shape)
 
         cur_datetime = datetime.now().strftime("%Y%m%d-%H%M%S")
-        logdir_scalar = "logs/scalars/" + cur_datetime
-        logdir_histogram = "logs/histograms/" + cur_datetime
+        logdir_scalar = "logs/scalars/" + cur_datetime if args.logdir_scalar is None else args.logdir_scalar
+        logdir_histogram = "logs/histograms/" + cur_datetime if args.logdir_histogram is None else args.logdir_histogram
         self.scalar_file_writer = tf.summary.create_file_writer(logdir=logdir_scalar)
         self.histogram_file_writer = tf.summary.create_file_writer(logdir=logdir_histogram)
 
     def create_network(self):
         network = keras.models.Sequential()
         network.add(
-            keras.layers.Conv2D(filters=32, kernel_size=(8, 8), strides=4, activation='relu', input_shape=(84, 84, 4)))
+            keras.layers.Conv2D(filters=32, kernel_size=(8, 8), strides=4, activation='relu',
+                                input_shape=self.observation_shape))
         network.add(keras.layers.Conv2D(filters=64, kernel_size=(4, 4), strides=2, activation='relu'))
         network.add(keras.layers.Conv2D(filters=64, kernel_size=(3, 3), strides=1, activation='relu'))
         network.add(keras.layers.Flatten())
@@ -125,7 +135,9 @@ class DeepQLearningAgent(object):
 
     def get_q_update(self, s, a, r, s2, term):
         term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)
-        q2_max = tf.reduce_max(tf.cast(tf.identity(self.target_network(s2)), tf.float32), axis=1)
+        # q2_max = tf.reduce_max(tf.cast(tf.identity(self.target_network(s2)), tf.float32), axis=1)
+        q2_max = tf.reduce_max(tf.cast(tf.identity(self.network(s2)), tf.float32), axis=1)
+
         q2 = tf.multiply(tf.multiply(tf.identity(q2_max), self.discount), term)
         delta = tf.cast(tf.identity(r), tf.float32)
         if self.rescale_r:
@@ -135,12 +147,15 @@ class DeepQLearningAgent(object):
         q = np.empty(shape=q_all.shape[0], dtype=np.float32)
 
         for i in range(q_all.shape[0]):
-            q[i] = (q_all[i][a[i]])
+            print("q_all: ", q_all)
+            print('q_all[i][a[i]]: ', q_all[i][a[i]])
+            q[i] = q_all[i][a[i]].numpy()
 
         q = tf.Variable(q)
         delta = tf.add(delta, tf.multiply(q, -1))
 
-        # clip delta not applied
+        # clip delta
+        delta = tf.clip_by_value(delta, -1., 1.)
 
         targets = np.zeros(shape=(self.minibatch_size, self.n_actions), dtype=np.float32)
 
@@ -161,32 +176,43 @@ class DeepQLearningAgent(object):
         # Ignoring weight cost
 
         # compute linearly annealed learning rate
-        t = max(0, self.num_steps - self.learn_start)
-        self.lr = (self.lr_start - self.lr_end) * (self.lr_endt - t) / self.lr_endt + self.lr_end
-        self.lr = max(self.lr, self.lr_end)
+        # t = max(0, self.num_steps - self.learn_start)
+        # self.lr = (self.lr_start - self.lr_end) * (self.lr_endt - t) / self.lr_endt + self.lr_end
+        # self.lr = max(self.lr, self.lr_end)
 
         assert len(dw) == len(self.network.weights), "len(dw) and len(network.weights) does not match"
+        # grads = np.clip(np.array(dw), -1., 1.)
 
-        tmp_weights = []
+        for i in range(len(dw)):
+            dw[i] = np.clip(dw[i], -1., 1.)
 
-        for i in range(len(self.network.weights)):
-            self.g[i] = tf.multiply(self.g[i], 0.95) + tf.multiply(0.05, dw[i])
-            self.tmp[i] = tf.multiply(dw[i], dw[i])
-            self.g2[i] = tf.multiply(self.g2[i], 0.95) + tf.multiply(0.05, self.tmp[i])
-            self.tmp[i] = tf.multiply(self.g[i], self.g[i])
-            self.tmp[i] = tf.multiply(self.tmp[i], -1)
-            self.tmp[i] = tf.add(self.tmp[i], self.g2[i])
-            self.tmp[i] = tf.add(self.tmp[i], 0.01)
-            self.tmp[i] = tf.sqrt(self.tmp[i])
-            self.deltas[i] = tf.multiply(self.deltas[i], 0) + tf.multiply(tf.divide(dw[i], self.tmp[i]), self.lr)
-            tmp_weights.append(tf.add(self.network.weights[i], self.deltas[i]))
+        grads = np.array(dw)
 
-        self.network.set_weights(tmp_weights)
+        current_weights = np.array(self.network.get_weights())
+        updated_weights = current_weights - 0.00001 * grads
+        self.network.set_weights(updated_weights)
+
+        # tmp_weights = []
+        #
+        # for i in range(len(self.network.weights)):
+        #     self.g[i] = tf.multiply(self.g[i], 0.95) + tf.multiply(0.05, dw[i])
+        #     self.tmp[i] = tf.multiply(dw[i], dw[i])
+        #     self.g2[i] = tf.multiply(self.g2[i], 0.95) + tf.multiply(0.05, self.tmp[i])
+        #     self.tmp[i] = tf.multiply(self.g[i], self.g[i])
+        #     self.tmp[i] = tf.multiply(self.tmp[i], -1)
+        #     self.tmp[i] = tf.add(self.tmp[i], self.g2[i])
+        #     self.tmp[i] = tf.add(self.tmp[i], 0.01)
+        #     self.tmp[i] = tf.sqrt(self.tmp[i])
+        #     self.deltas[i] = tf.multiply(self.deltas[i], 0) + tf.multiply(tf.divide(dw[i], self.tmp[i]), self.lr)
+        #     tmp_weights.append(tf.add(self.network.weights[i], self.deltas[i]))
+        #
+        # self.network.set_weights(tmp_weights)
 
     def learn_with_experience_replay(self):
         try:
             return_val = 0  # for TensorBoard
-
+            q_value_list = []
+            num_episode = 0
             preprocessed_input = self.env.initialize_input_sequence()
 
             while self.num_steps < self.total_steps:
@@ -194,18 +220,27 @@ class DeepQLearningAgent(object):
 
                 if self.env.is_game_over():
                     preprocessed_input = self.env.initialize_input_sequence()
-
+                    num_episode += 1  # Game Over indicates start of a new episode
                     # Write total return of the last episode to TensorBoard
                     with self.scalar_file_writer.as_default():
-                        tf.summary.scalar('Return', return_val, step=self.num_steps)
+                        tf.summary.scalar('Return', return_val, step=num_episode)
+                        print(q_value_list)
+                        avg_q_value = sum(q_value_list) / float(len(q_value_list))
+                        tf.summary.scalar('Average q_value', avg_q_value, step=num_episode)
                         tf.summary.flush()
 
                     return_val = 0  # Reset return value
+                    q_value_list.clear()
 
                 action = self.e_greedy_select_action(preprocessed_input)
                 reward, next_preprocessed_input = self.env.execute_action(action)
 
                 return_val += reward  # Accumulate returns of the running episode in return_val
+                q_values = self.network.predict(np.expand_dims(preprocessed_input, 0))[0]
+                print("q_values:", q_values)
+                q_value_for_selected_action = q_values[action]
+                q_value_list.append(q_value_for_selected_action)
+                print("Added to q value ", q_value_for_selected_action)
 
                 self.experience_replay_memory.add(preprocessed_input, action, reward, next_preprocessed_input,
                                                   self.env.is_game_over())
@@ -244,7 +279,8 @@ class DeepQLearningAgent(object):
 
                 # update target-q network
                 if self.target_q is not None and self.num_steps % self.target_q == 1:
-                    self.target_network = tf.keras.models.clone_model(self.network)
+                    # self.target_network = tf.keras.models.clone_model(self.network)
+                    self.target_network.set_weights(self.network.get_weights())
 
                 with self.scalar_file_writer.as_default():
                     tf.summary.scalar('Reward', reward, step=self.num_steps)
@@ -272,5 +308,5 @@ class DeepQLearningAgent(object):
                 "lr": self.lr
             }
 
-            with open(os.path.join(self.save_model_path,'agent_state.json'), 'w') as f:
+            with open(os.path.join(self.save_model_path, 'agent_state.json'), 'w') as f:
                 json.dump(agent_state, f)

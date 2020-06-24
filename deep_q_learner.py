@@ -5,7 +5,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
+import keras
 
 from transition_table import TransitionTable
 
@@ -25,6 +25,7 @@ class DQLAgentArgs(object):
         self.r_max = None
         self.minibatch_size = 32
         self.target_q = 10000
+        self.num_steps = None
 
         # learning reate annealing
         self.lr = None
@@ -46,7 +47,7 @@ class DeepQLearningAgent(object):
 
         self.write_weight_histogram = args.write_weight_histogram
         self.network = args.network if args.network is not None else self.create_network()
-        self.target_network = tf.keras.models.clone_model(self.network)
+        self.target_network = keras.models.clone_model(self.network)
 
         self.total_steps = args.total_steps
         self.update_freq = args.update_freq
@@ -238,7 +239,8 @@ class DeepQLearningAgent(object):
 
                 # update target-q network
                 if self.target_q is not None and self.num_steps % self.target_q == 1:
-                    self.target_network = tf.keras.models.clone_model(self.network)
+                    # self.target_network = keras.models.clone_model(self.network)
+                    self.target_network.set_weights(self.network.get_weights())
 
                 with self.scalar_file_writer.as_default():
                     tf.summary.scalar('Reward', reward, step=self.num_steps)

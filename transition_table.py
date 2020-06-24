@@ -25,12 +25,6 @@ class TransitionTable(object):
             s2[i] = samples[i][3]
             term[i] = samples[i][4]
 
-        s = tf.Variable(s, dtype=tf.float32)
-        a = tf.Variable(a, dtype=tf.int32)
-        r = tf.Variable(r, dtype=tf.float32)
-        s2 = tf.Variable(s2, dtype=tf.float32)
-        term = tf.Variable(term, dtype=tf.float32)
-
         return s, a, r, s2, term
 
     def add(self, s, a, r, s2, is_term):

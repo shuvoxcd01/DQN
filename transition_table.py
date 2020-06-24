@@ -5,15 +5,16 @@ import tensorflow as tf
 
 
 class TransitionTable(object):
-    def __init__(self, maxlen=100000):
+    def __init__(self, shape=(84, 84, 4), maxlen=100000):
         self.transitions = deque(maxlen=maxlen)
+        self.s_shape = shape
 
     def sample(self, size=1):
         assert len(self.transitions) >= size
         samples = random.sample(self.transitions, size)
 
-        s = np.empty(shape=(size, 84, 84, 4), dtype=np.float32)
-        s2 = np.empty(shape=(size, 84, 84, 4), dtype=np.float32)
+        s = np.empty(shape=(size, *self.s_shape), dtype=np.float32)
+        s2 = np.empty(shape=(size, *self.s_shape), dtype=np.float32)
         a = np.empty(shape=size, dtype=np.int32)
         r = np.empty(shape=size, dtype=np.float32)
         term = np.empty(shape=size, dtype=np.float32)

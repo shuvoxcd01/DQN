@@ -1,7 +1,7 @@
-from collections import deque
 import random
+from collections import deque
+
 import numpy as np
-import tensorflow as tf
 
 
 class TransitionTable(object):

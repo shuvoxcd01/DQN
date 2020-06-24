@@ -124,30 +124,24 @@ class DeepQLearningAgent(object):
         return action
 
     def get_q_update(self, s, a, r, s2, term):
-        term = tf.add(tf.multiply(tf.cast(tf.identity(term), tf.float32), -1), 1)
-        q2_max = tf.reduce_max(tf.cast(tf.identity(self.target_network(s2)), tf.float32), axis=1)
-        q2 = tf.multiply(tf.multiply(tf.identity(q2_max), self.discount), term)
-        delta = tf.cast(tf.identity(r), tf.float32)
+        term = (np.copy(term).astype(np.float32) * -1) + 1
+        q2_max = np.amax(np.copy(self.target_network.predict(s2)).astype(np.float32), axis=1)
+        q2 = np.multiply(np.multiply(np.copy(q2_max), self.discount), term)
+        delta = np.copy(r).astype(np.float32)
         if self.rescale_r:
-            delta = tf.divide(delta, self.r_max)
-        delta = tf.add(delta, q2)
-        q_all = tf.cast(self.network(s), tf.float32)
+            delta = np.divide(delta, self.r_max)
+        delta = np.add(delta, q2)
+        q_all = self.network.predict(s).astype(np.float32)
         q = np.empty(shape=q_all.shape[0], dtype=np.float32)
 
         for i in range(q_all.shape[0]):
             q[i] = (q_all[i][a[i]])
 
-        q = tf.Variable(q)
-        delta = tf.add(delta, tf.multiply(q, -1))
-
+        delta = np.add(delta, np.multiply(q, -1))
         # clip delta not applied
-
         targets = np.zeros(shape=(self.minibatch_size, self.n_actions), dtype=np.float32)
-
         for i in range(min(self.minibatch_size, a.shape[0])):
             targets[i][a[i]] = delta[i]
-
-        targets = tf.Variable(targets)
 
         return targets, delta, q2_max
 
@@ -272,5 +266,5 @@ class DeepQLearningAgent(object):
                 "lr": self.lr
             }
 
-            with open(os.path.join(self.save_model_path,'agent_state.json'), 'w') as f:
+            with open(os.path.join(self.save_model_path, 'agent_state.json'), 'w') as f:
                 json.dump(agent_state, f)

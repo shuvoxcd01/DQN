@@ -1,8 +1,8 @@
 import json
 
 import tensorflow as tf
-# from tensorflow import keras
-import keras
+from tensorflow import keras
+#import keras
 from cartpole_env_manager import CartPoleEnvManager
 from deep_q_learner import DeepQLearningAgent, DQLAgentArgs
 
